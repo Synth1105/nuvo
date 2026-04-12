@@ -2,7 +2,8 @@
 name = "nuvo"
 version = "0.1.0"
 edition = "2024"
-
+description = "Talk with client"
+license = "LGPL-3.0-only"
 [dependencies]
 rand = "0.8.5"
 tokio = { version = "1.37.0", features = ["net", "io-util", "rt", "macros"] }
