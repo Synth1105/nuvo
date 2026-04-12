@@ -69,6 +69,7 @@ impl Receiver {
 }
 
 impl Session {
+    #[allow(dead_code)]
     pub fn token(&self) -> &[u8] {
         &self.token
     }
