@@ -1,3 +1,9 @@
+//! Internal protocol implementation for Nuvo.
+//!
+//! The protocol follows a simple binary format:
+//! - Handshake: HELLO (client) -> ACCEPT/REJECT (server)
+//! - Data exchange: DATA packets containing an authentication token and payload.
+
 use std::io;
 use std::net::SocketAddr;
 
@@ -5,9 +11,12 @@ use rand::RngCore;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+/// Magic bytes to identify Nuvo protocol ("NV").
 const MAGIC: [u8; 2] = *b"NV";
+/// Current protocol version.
 const VERSION: u8 = 1;
 
+/// Message types.
 const TYPE_HELLO: u8 = 1;
 const TYPE_ACCEPT: u8 = 2;
 const TYPE_REJECT: u8 = 3;
@@ -18,17 +27,20 @@ const MAX_TOKEN_LEN: usize = 64;
 const TOKEN_LEN: usize = 32;
 const MAX_PAYLOAD_LEN: usize = 8 * 1024 * 1024;
 
+/// Internal receiver implementation that wraps a [`TcpListener`].
 pub struct Receiver {
     listener: TcpListener,
     expected_password: Option<String>,
 }
 
+/// Internal session implementation that wraps a [`TcpStream`] and maintains a session token.
 pub struct Session {
     stream: TcpStream,
     token: Vec<u8>,
     peer: SocketAddr,
 }
 
+/// Creates a new [`Receiver`] bound to the specified port.
 pub async fn rx(port: u16, expected_password: Option<&str>) -> io::Result<Receiver> {
     let addr = format!("0.0.0.0:{port}");
     let listener = TcpListener::bind(addr).await?;
@@ -38,6 +50,9 @@ pub async fn rx(port: u16, expected_password: Option<&str>) -> io::Result<Receiv
     })
 }
 
+/// Creates a new [`Session`] (client-side) by connecting to the specified address.
+///
+/// This performs the HELLO handshake.
 pub async fn tx(ip: &str, port: u16, password: &str) -> io::Result<Session> {
     let addr = (ip, port);
     let mut stream = TcpStream::connect(addr).await?;
@@ -47,6 +62,7 @@ pub async fn tx(ip: &str, port: u16, password: &str) -> io::Result<Session> {
 }
 
 impl Receiver {
+    /// Accepts a new connection and performs the server-side handshake.
     pub async fn accept(&self) -> io::Result<Session> {
         let (mut stream, peer) = self.listener.accept().await?;
         let password = read_hello(&mut stream).await?;
@@ -69,23 +85,29 @@ impl Receiver {
 }
 
 impl Session {
+    /// Returns the session token.
     #[allow(dead_code)]
     pub fn token(&self) -> &[u8] {
         &self.token
     }
 
+    /// Returns the peer address.
     pub fn peer_addr(&self) -> SocketAddr {
         self.peer
     }
 
+    /// Sends a DATA packet with the session token.
     pub async fn send(&mut self, payload: &[u8]) -> io::Result<()> {
         send_data(&mut self.stream, &self.token, payload).await
     }
 
+    /// Reads a DATA packet and validates the session token.
     pub async fn recv(&mut self) -> io::Result<Vec<u8>> {
         read_data(&mut self.stream, &self.token).await
     }
 }
+
+// --- Protocol Helper Functions ---
 
 async fn send_hello(stream: &mut TcpStream, password: &str) -> io::Result<()> {
     let bytes = password.as_bytes();
@@ -292,6 +314,7 @@ async fn read_string(stream: &mut TcpStream, max_len: usize) -> io::Result<Strin
     Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
+/// Generates a random session token.
 fn generate_token() -> Vec<u8> {
     let mut token = vec![0u8; TOKEN_LEN];
     rand::rngs::OsRng.fill_bytes(&mut token);
