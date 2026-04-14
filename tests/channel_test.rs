@@ -1,4 +1,4 @@
-use nuvo::{receiver, sender};
+use nuvo::prelude::*;
 
 #[tokio::test]
 async fn test_rx_with_password_success() {
